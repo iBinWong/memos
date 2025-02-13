@@ -2,6 +2,7 @@ import { Select, Option, Divider } from "@mui/joy";
 import { Button } from "@usememos/mui";
 import { isEqual } from "lodash-es";
 import { LoaderIcon, SendIcon } from "lucide-react";
+import { observer } from "mobx-react-lite";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -13,7 +14,8 @@ import { TAB_SPACE_WIDTH } from "@/helpers/consts";
 import { isValidUrl } from "@/helpers/utils";
 import useAsyncEffect from "@/hooks/useAsyncEffect";
 import useCurrentUser from "@/hooks/useCurrentUser";
-import { useMemoStore, useResourceStore, useUserStore, useWorkspaceSettingStore } from "@/store/v1";
+import { useMemoStore, useResourceStore } from "@/store/v1";
+import { userStore, workspaceStore } from "@/store/v2";
 import { MemoRelation, MemoRelation_Type } from "@/types/proto/api/v1/memo_relation_service";
 import { Location, Memo, Visibility } from "@/types/proto/api/v1/memo_service";
 import { Resource } from "@/types/proto/api/v1/resource_service";
@@ -57,12 +59,10 @@ interface State {
   isComposing: boolean;
 }
 
-const MemoEditor = (props: Props) => {
+const MemoEditor = observer((props: Props) => {
   const { className, cacheKey, memoName, parentMemoName, autoFocus, onConfirm, onCancel } = props;
   const t = useTranslate();
   const { i18n } = useTranslation();
-  const workspaceSettingStore = useWorkspaceSettingStore();
-  const userStore = useUserStore();
   const memoStore = useMemoStore();
   const resourceStore = useResourceStore();
   const currentUser = useCurrentUser();
@@ -78,7 +78,7 @@ const MemoEditor = (props: Props) => {
   const [displayTime, setDisplayTime] = useState<Date | undefined>();
   const [hasContent, setHasContent] = useState<boolean>(false);
   const editorRef = useRef<EditorRefActions>(null);
-  const userSetting = userStore.userSetting as UserSetting;
+  const userSetting = userStore.state.userSetting as UserSetting;
   const contentCacheKey = `${currentUser.name}-${cacheKey || ""}`;
   const [contentCache, setContentCache] = useLocalStorage<string>(contentCacheKey, "");
   const referenceRelations = memoName
@@ -88,7 +88,7 @@ const MemoEditor = (props: Props) => {
       )
     : state.relationList.filter((relation) => relation.type === MemoRelation_Type.REFERENCE);
   const workspaceMemoRelatedSetting =
-    workspaceSettingStore.getWorkspaceSettingByKey(WorkspaceSettingKey.MEMO_RELATED)?.memoRelatedSetting ||
+    workspaceStore.getWorkspaceSettingByKey(WorkspaceSettingKey.MEMO_RELATED)?.memoRelatedSetting ||
     WorkspaceMemoRelatedSetting.fromPartial({});
 
   useEffect(() => {
@@ -334,6 +334,13 @@ const MemoEditor = (props: Props) => {
             updateMask.add("display_time");
             memoPatch.displayTime = displayTime;
           }
+          if (updateMask.size === 0) {
+            toast.error("No changes detected");
+            if (onCancel) {
+              onCancel();
+            }
+            return;
+          }
           const memo = await memoStore.updateMemo(memoPatch, Array.from(updateMask));
           if (onConfirm) {
             onConfirm(memo.name);
@@ -343,11 +350,13 @@ const MemoEditor = (props: Props) => {
         // Create memo or memo comment.
         const request = !parentMemoName
           ? memoStore.createMemo({
-              content,
-              visibility: state.memoVisibility,
-              resources: state.resourceList,
-              relations: state.relationList,
-              location: state.location,
+              memo: Memo.fromPartial({
+                content,
+                visibility: state.memoVisibility,
+                resources: state.resourceList,
+                relations: state.relationList,
+                location: state.location,
+              }),
             })
           : memoServiceClient
               .createMemoComment({
@@ -512,6 +521,6 @@ const MemoEditor = (props: Props) => {
       </div>
     </MemoEditorContext.Provider>
   );
-};
+});
 
 export default MemoEditor;

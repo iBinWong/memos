@@ -11,11 +11,9 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/cel-go/cel"
 	"github.com/labstack/echo/v4"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
-	expr "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 	"google.golang.org/genproto/googleapis/api/httpbody"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -51,39 +49,6 @@ func (s *APIV1Service) ListUsers(ctx context.Context, _ *v1pb.ListUsersRequest) 
 	return response, nil
 }
 
-func (s *APIV1Service) SearchUsers(ctx context.Context, request *v1pb.SearchUsersRequest) (*v1pb.SearchUsersResponse, error) {
-	if request.Filter == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "filter is empty")
-	}
-	filter, err := parseSearchUsersFilter(request.Filter)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "failed to parse filter: %v", err)
-	}
-	userFind := &store.FindUser{}
-	if filter.Username != nil {
-		userFind.Username = filter.Username
-	}
-	if filter.Random {
-		userFind.Random = true
-	}
-	if filter.Limit != nil {
-		userFind.Limit = filter.Limit
-	}
-
-	users, err := s.Store.ListUsers(ctx, userFind)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to search users: %v", err)
-	}
-
-	response := &v1pb.SearchUsersResponse{
-		Users: []*v1pb.User{},
-	}
-	for _, user := range users {
-		response.Users = append(response.Users, convertUserFromStore(user))
-	}
-	return response, nil
-}
-
 func (s *APIV1Service) GetUser(ctx context.Context, request *v1pb.GetUserRequest) (*v1pb.User, error) {
 	userID, err := ExtractUserIDFromName(request.Name)
 	if err != nil {
@@ -91,6 +56,20 @@ func (s *APIV1Service) GetUser(ctx context.Context, request *v1pb.GetUserRequest
 	}
 	user, err := s.Store.GetUser(ctx, &store.FindUser{
 		ID: &userID,
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get user: %v", err)
+	}
+	if user == nil {
+		return nil, status.Errorf(codes.NotFound, "user not found")
+	}
+
+	return convertUserFromStore(user), nil
+}
+
+func (s *APIV1Service) GetUserByUsername(ctx context.Context, request *v1pb.GetUserByUsernameRequest) (*v1pb.User, error) {
+	user, err := s.Store.GetUser(ctx, &store.FindUser{
+		Username: &request.Username,
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get user: %v", err)
@@ -275,109 +254,11 @@ func (s *APIV1Service) DeleteUser(ctx context.Context, request *v1pb.DeleteUserR
 	return &emptypb.Empty{}, nil
 }
 
-func (s *APIV1Service) ListAllUserStats(ctx context.Context, request *v1pb.ListAllUserStatsRequest) (*v1pb.ListAllUserStatsResponse, error) {
-	users, err := s.Store.ListUsers(ctx, &store.FindUser{})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to list users: %v", err)
-	}
-	userStatsList := []*v1pb.UserStats{}
-	for _, user := range users {
-		userStats, err := s.GetUserStats(ctx, &v1pb.GetUserStatsRequest{
-			Name:   fmt.Sprintf("%s%d", UserNamePrefix, user.ID),
-			Filter: request.Filter,
-		})
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get user stats: %v", err)
-		}
-		userStatsList = append(userStatsList, userStats)
-	}
-	return &v1pb.ListAllUserStatsResponse{
-		UserStats: userStatsList,
-	}, nil
-}
-
-func (s *APIV1Service) GetUserStats(ctx context.Context, request *v1pb.GetUserStatsRequest) (*v1pb.UserStats, error) {
-	userID, err := ExtractUserIDFromName(request.Name)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid user name: %v", err)
-	}
-	user, err := s.Store.GetUser(ctx, &store.FindUser{ID: &userID})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get user: %v", err)
-	}
-
-	currentUser, err := s.GetCurrentUser(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get user: %v", err)
-	}
-	// For unauthenticated users, only public memos are visible.
-	visibilities := []store.Visibility{store.Public}
-	if currentUser != nil {
-		// For authenticated users, protected memos are also visible.
-		visibilities = append(visibilities, store.Protected)
-		if currentUser.ID == user.ID {
-			// For the current user, show all memos including private ones.
-			visibilities = []store.Visibility{store.Public, store.Protected, store.Private}
-		}
-	}
-
-	workspaceMemoRelatedSetting, err := s.Store.GetWorkspaceMemoRelatedSetting(ctx)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get workspace memo related setting")
-	}
-	userStats := &v1pb.UserStats{
-		Name:                  fmt.Sprintf("%s%d", UserNamePrefix, user.ID),
-		MemoDisplayTimestamps: []*timestamppb.Timestamp{},
-		MemoTypeStats:         &v1pb.UserStats_MemoTypeStats{},
-		TagCount:              map[string]int32{},
-	}
-	memoFind := &store.FindMemo{
-		// Exclude comments by default.
-		ExcludeComments: true,
-		ExcludeContent:  true,
-	}
-	if err := s.buildMemoFindWithFilter(ctx, memoFind, request.Filter); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "failed to build find memos with filter: %v", err)
-	}
-	// Override the creator ID and visibility list.
-	memoFind.CreatorID = &user.ID
-	memoFind.VisibilityList = visibilities
-	memos, err := s.Store.ListMemos(ctx, memoFind)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to list memos: %v", err)
-	}
-	for _, memo := range memos {
-		displayTs := memo.CreatedTs
-		if workspaceMemoRelatedSetting.DisplayWithUpdateTime {
-			displayTs = memo.UpdatedTs
-		}
-		userStats.MemoDisplayTimestamps = append(userStats.MemoDisplayTimestamps, timestamppb.New(time.Unix(displayTs, 0)))
-		// Handle duplicated tags.
-		for _, tag := range memo.Payload.Tags {
-			userStats.TagCount[tag]++
-		}
-		if memo.Payload.Property.GetHasLink() {
-			userStats.MemoTypeStats.LinkCount++
-		}
-		if memo.Payload.Property.GetHasTaskList() {
-			userStats.MemoTypeStats.TaskCount++
-		}
-		if memo.Payload.Property.GetHasCode() {
-			userStats.MemoTypeStats.CodeCount++
-		}
-	}
-	return userStats, nil
-}
-
-func getDefaultUserSetting(workspaceMemoRelatedSetting *storepb.WorkspaceMemoRelatedSetting) *v1pb.UserSetting {
-	defaultVisibility := "PRIVATE"
-	if workspaceMemoRelatedSetting.DefaultVisibility != "" {
-		defaultVisibility = workspaceMemoRelatedSetting.DefaultVisibility
-	}
+func getDefaultUserSetting() *v1pb.UserSetting {
 	return &v1pb.UserSetting{
 		Locale:         "en",
 		Appearance:     "system",
-		MemoVisibility: defaultVisibility,
+		MemoVisibility: "PRIVATE",
 	}
 }
 
@@ -387,19 +268,13 @@ func (s *APIV1Service) GetUserSetting(ctx context.Context, _ *v1pb.GetUserSettin
 		return nil, status.Errorf(codes.Internal, "failed to get current user: %v", err)
 	}
 
-	workspaceMemoRelatedSetting, err := s.Store.GetWorkspaceMemoRelatedSetting(ctx)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get workspace general setting: %v", err)
-	}
-
 	userSettings, err := s.Store.ListUserSettings(ctx, &store.FindUserSetting{
 		UserID: &user.ID,
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to list user settings: %v", err)
 	}
-	// getDefaultUserSetting By workspaceSetting
-	userSettingMessage := getDefaultUserSetting(workspaceMemoRelatedSetting)
+	userSettingMessage := getDefaultUserSetting()
 	for _, setting := range userSettings {
 		if setting.Key == storepb.UserSettingKey_LOCALE {
 			userSettingMessage.Locale = setting.GetLocale()
@@ -690,63 +565,6 @@ func convertUserRoleToStore(role v1pb.User_Role) store.Role {
 		return store.RoleUser
 	default:
 		return store.RoleUser
-	}
-}
-
-// SearchUsersFilterCELAttributes are the CEL attributes for SearchUsersFilter.
-var SearchUsersFilterCELAttributes = []cel.EnvOption{
-	cel.Variable("username", cel.StringType),
-	cel.Variable("random", cel.BoolType),
-	cel.Variable("limit", cel.IntType),
-}
-
-type SearchUsersFilter struct {
-	Username *string
-	Random   bool
-	Limit    *int
-}
-
-func parseSearchUsersFilter(expression string) (*SearchUsersFilter, error) {
-	e, err := cel.NewEnv(SearchUsersFilterCELAttributes...)
-	if err != nil {
-		return nil, err
-	}
-	ast, issues := e.Compile(expression)
-	if issues != nil {
-		return nil, errors.Errorf("found issue %v", issues)
-	}
-	filter := &SearchUsersFilter{}
-	expr, err := cel.AstToParsedExpr(ast)
-	if err != nil {
-		return nil, err
-	}
-	callExpr := expr.GetExpr().GetCallExpr()
-	findSearchUsersField(callExpr, filter)
-	return filter, nil
-}
-
-func findSearchUsersField(callExpr *expr.Expr_Call, filter *SearchUsersFilter) {
-	if len(callExpr.Args) == 2 {
-		idExpr := callExpr.Args[0].GetIdentExpr()
-		if idExpr != nil {
-			if idExpr.Name == "username" {
-				username := callExpr.Args[1].GetConstExpr().GetStringValue()
-				filter.Username = &username
-			} else if idExpr.Name == "random" {
-				random := callExpr.Args[1].GetConstExpr().GetBoolValue()
-				filter.Random = random
-			} else if idExpr.Name == "limit" {
-				limit := int(callExpr.Args[1].GetConstExpr().GetInt64Value())
-				filter.Limit = &limit
-			}
-			return
-		}
-	}
-	for _, arg := range callExpr.Args {
-		callExpr := arg.GetCallExpr()
-		if callExpr != nil {
-			findSearchUsersField(callExpr, filter)
-		}
 	}
 }
 
