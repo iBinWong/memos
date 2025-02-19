@@ -196,6 +196,7 @@ func convertWorkspaceStorageSettingFromStore(settingpb *storepb.WorkspaceStorage
 			Endpoint:        settingpb.S3Config.Endpoint,
 			Region:          settingpb.S3Config.Region,
 			Bucket:          settingpb.S3Config.Bucket,
+			UsePathStyle:    settingpb.S3Config.UsePathStyle,
 		}
 	}
 	return setting
@@ -217,6 +218,7 @@ func convertWorkspaceStorageSettingToStore(setting *v1pb.WorkspaceStorageSetting
 			Endpoint:        setting.S3Config.Endpoint,
 			Region:          setting.S3Config.Region,
 			Bucket:          setting.S3Config.Bucket,
+			UsePathStyle:    setting.S3Config.UsePathStyle,
 		}
 	}
 	return settingpb
@@ -235,9 +237,10 @@ func convertWorkspaceMemoRelatedSettingFromStore(setting *storepb.WorkspaceMemoR
 		EnableLinkPreview:        setting.EnableLinkPreview,
 		EnableComment:            setting.EnableComment,
 		EnableLocation:           setting.EnableLocation,
-		DefaultVisibility:        setting.DefaultVisibility,
 		Reactions:                setting.Reactions,
 		DisableMarkdownShortcuts: setting.DisableMarkdownShortcuts,
+		EnableBlurNsfwContent:    setting.EnableBlurNsfwContent,
+		NsfwTags:                 setting.NsfwTags,
 	}
 }
 
@@ -254,8 +257,9 @@ func convertWorkspaceMemoRelatedSettingToStore(setting *v1pb.WorkspaceMemoRelate
 		EnableLinkPreview:        setting.EnableLinkPreview,
 		EnableComment:            setting.EnableComment,
 		EnableLocation:           setting.EnableLocation,
-		DefaultVisibility:        setting.DefaultVisibility,
 		Reactions:                setting.Reactions,
 		DisableMarkdownShortcuts: setting.DisableMarkdownShortcuts,
+		EnableBlurNsfwContent:    setting.EnableBlurNsfwContent,
+		NsfwTags:                 setting.NsfwTags,
 	}
 }

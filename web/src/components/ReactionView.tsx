@@ -1,11 +1,11 @@
 import { Tooltip } from "@mui/joy";
-import clsx from "clsx";
 import { memoServiceClient } from "@/grpcweb";
 import useCurrentUser from "@/hooks/useCurrentUser";
 import { useMemoStore } from "@/store/v1";
 import { State } from "@/types/proto/api/v1/common";
 import { Memo } from "@/types/proto/api/v1/memo_service";
 import { User } from "@/types/proto/api/v1/user_service";
+import { cn } from "@/utils";
 
 interface Props {
   memo: Memo;
@@ -55,7 +55,7 @@ const ReactionView = (props: Props) => {
           (reaction) => reaction.reactionType === reactionType && reaction.creator === currentUser.name,
         );
         for (const reaction of reactions) {
-          await memoServiceClient.deleteMemoReaction({ reactionId: reaction.id });
+          await memoServiceClient.deleteMemoReaction({ id: reaction.id });
         }
       }
     } catch (error) {
@@ -67,7 +67,7 @@ const ReactionView = (props: Props) => {
   return (
     <Tooltip title={stringifyUsers(users, reactionType)} placement="top">
       <div
-        className={clsx(
+        className={cn(
           "h-7 border px-2 py-0.5 rounded-full flex flex-row justify-center items-center gap-1 dark:border-zinc-700",
           "text-sm text-gray-600 dark:text-gray-400",
           currentUser && !readonly && "cursor-pointer",

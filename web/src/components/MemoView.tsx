@@ -1,17 +1,16 @@
 import { Tooltip } from "@mui/joy";
-import clsx from "clsx";
-import { BookmarkIcon, MessageCircleMoreIcon } from "lucide-react";
+import { BookmarkIcon, EyeOffIcon, MessageCircleMoreIcon } from "lucide-react";
 import { memo, useCallback, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import useAsyncEffect from "@/hooks/useAsyncEffect";
 import useCurrentUser from "@/hooks/useCurrentUser";
 import useNavigateTo from "@/hooks/useNavigateTo";
-import { useUserStore, useWorkspaceSettingStore, useMemoStore } from "@/store/v1";
+import { useMemoStore, useUserStatsStore } from "@/store/v1";
+import { userStore, workspaceStore } from "@/store/v2";
 import { State } from "@/types/proto/api/v1/common";
 import { MemoRelation_Type } from "@/types/proto/api/v1/memo_relation_service";
 import { Memo, Visibility } from "@/types/proto/api/v1/memo_service";
-import { WorkspaceMemoRelatedSetting } from "@/types/proto/api/v1/workspace_setting_service";
-import { WorkspaceSettingKey } from "@/types/proto/store/workspace_setting";
+import { cn } from "@/utils";
 import { useTranslate } from "@/utils/i18n";
 import { convertVisibilityToString } from "@/utils/memo";
 import { isSuperUser } from "@/utils/user";
@@ -33,6 +32,7 @@ interface Props {
   showCreator?: boolean;
   showVisibility?: boolean;
   showPinned?: boolean;
+  showNsfwContent?: boolean;
   className?: string;
   parentPage?: string;
 }
@@ -43,16 +43,14 @@ const MemoView: React.FC<Props> = (props: Props) => {
   const location = useLocation();
   const navigateTo = useNavigateTo();
   const currentUser = useCurrentUser();
-  const userStore = useUserStore();
   const user = useCurrentUser();
   const memoStore = useMemoStore();
-  const workspaceSettingStore = useWorkspaceSettingStore();
+  const userStatsStore = useUserStatsStore();
   const [showEditor, setShowEditor] = useState<boolean>(false);
   const [creator, setCreator] = useState(userStore.getUserByName(memo.creator));
+  const [showNSFWContent, setShowNSFWContent] = useState(props.showNsfwContent);
   const memoContainerRef = useRef<HTMLDivElement>(null);
-  const workspaceMemoRelatedSetting =
-    workspaceSettingStore.getWorkspaceSettingByKey(WorkspaceSettingKey.MEMO_RELATED).memoRelatedSetting ||
-    WorkspaceMemoRelatedSetting.fromPartial({});
+  const workspaceMemoRelatedSetting = workspaceStore.state.memoRelatedSetting;
   const referencedMemos = memo.relations.filter((relation) => relation.type === MemoRelation_Type.REFERENCE);
   const commentAmount = memo.relations.filter(
     (relation) => relation.type === MemoRelation_Type.COMMENT && relation.relatedMemo?.name === memo.name,
@@ -60,8 +58,11 @@ const MemoView: React.FC<Props> = (props: Props) => {
   const relativeTimeFormat = Date.now() - memo.displayTime!.getTime() > 1000 * 60 * 60 * 24 ? "datetime" : "auto";
   const isArchived = memo.state === State.ARCHIVED;
   const readonly = memo.creator !== user?.name && !isSuperUser(user);
-  const isInMemoDetailPage = location.pathname.startsWith(`/m/${memo.uid}`);
+  const isInMemoDetailPage = location.pathname.startsWith(`/${memo.name}`);
   const parentPage = props.parentPage || location.pathname;
+  const nsfw =
+    workspaceMemoRelatedSetting.enableBlurNsfwContent &&
+    memo.tags?.some((tag) => workspaceMemoRelatedSetting.nsfwTags.includes(tag.toLowerCase()));
 
   // Initial related data: creator.
   useAsyncEffect(async () => {
@@ -70,12 +71,12 @@ const MemoView: React.FC<Props> = (props: Props) => {
   }, []);
 
   const handleGotoMemoDetailPage = useCallback(() => {
-    navigateTo(`/m/${memo.uid}`, {
+    navigateTo(`/${memo.name}`, {
       state: {
         from: parentPage,
       },
     });
-  }, [memo.uid, parentPage]);
+  }, [memo.name, parentPage]);
 
   const handleMemoContentClick = useCallback(async (e: React.MouseEvent) => {
     const targetEl = e.target as HTMLElement;
@@ -99,19 +100,20 @@ const MemoView: React.FC<Props> = (props: Props) => {
     }
   }, []);
 
+  const onEditorConfirm = () => {
+    setShowEditor(false);
+    userStatsStore.setStateId();
+  };
+
   const onPinIconClick = async () => {
-    try {
-      if (memo.pinned) {
-        await memoStore.updateMemo(
-          {
-            name: memo.name,
-            pinned: false,
-          },
-          ["pinned"],
-        );
-      }
-    } catch (error) {
-      // do nth
+    if (memo.pinned) {
+      await memoStore.updateMemo(
+        {
+          name: memo.name,
+          pinned: false,
+        },
+        ["pinned"],
+      );
     }
   };
 
@@ -123,7 +125,7 @@ const MemoView: React.FC<Props> = (props: Props) => {
 
   return (
     <div
-      className={clsx(
+      className={cn(
         "group relative flex flex-col justify-start items-start w-full px-4 py-3 mb-2 gap-2 bg-white dark:bg-zinc-800 rounded-lg border border-white dark:border-zinc-800 hover:border-gray-200 dark:hover:border-zinc-700",
         props.showPinned && memo.pinned && "border-gray-200 border dark:border-zinc-700",
         className,
@@ -136,7 +138,7 @@ const MemoView: React.FC<Props> = (props: Props) => {
           className="border-none !p-0 -mb-2"
           cacheKey={`inline-memo-editor-${memo.name}`}
           memoName={memo.name}
-          onConfirm={() => setShowEditor(false)}
+          onConfirm={onEditorConfirm}
           onCancel={() => setShowEditor(false)}
         />
       ) : (
@@ -186,11 +188,11 @@ const MemoView: React.FC<Props> = (props: Props) => {
               </div>
               {!isInMemoDetailPage && (workspaceMemoRelatedSetting.enableComment || commentAmount > 0) && (
                 <Link
-                  className={clsx(
+                  className={cn(
                     "flex flex-row justify-start items-center hover:opacity-70",
                     commentAmount === 0 && "invisible group-hover:visible",
                   )}
-                  to={`/m/${memo.uid}#comments`}
+                  to={`/${memo.name}#comments`}
                   viewTransition
                   state={{
                     from: parentPage,
@@ -207,23 +209,46 @@ const MemoView: React.FC<Props> = (props: Props) => {
                   </span>
                 </Tooltip>
               )}
+              {nsfw && showNSFWContent && (
+                <span className="cursor-pointer">
+                  <EyeOffIcon className="w-4 h-auto text-amber-500" onClick={() => setShowNSFWContent(false)} />
+                </span>
+              )}
               <MemoActionMenu className="-ml-1" memo={memo} readonly={readonly} onEdit={() => setShowEditor(true)} />
             </div>
           </div>
-          <MemoContent
-            key={`${memo.name}-${memo.updateTime}`}
-            memoName={memo.name}
-            nodes={memo.nodes}
-            readonly={readonly}
-            onClick={handleMemoContentClick}
-            onDoubleClick={handleMemoContentDoubleClick}
-            compact={props.compact && workspaceMemoRelatedSetting.enableAutoCompact}
-            parentPage={parentPage}
-          />
-          {memo.location && <MemoLocationView location={memo.location} />}
-          <MemoResourceListView resources={memo.resources} />
-          <MemoRelationListView memo={memo} relations={referencedMemos} parentPage={parentPage} />
-          <MemoReactionistView memo={memo} reactions={memo.reactions} />
+          <div
+            className={cn(
+              "w-full flex flex-col justify-start items-start gap-2",
+              nsfw && !showNSFWContent && "blur-lg transition-all duration-200",
+            )}
+          >
+            <MemoContent
+              key={`${memo.name}-${memo.updateTime}`}
+              memoName={memo.name}
+              nodes={memo.nodes}
+              readonly={readonly}
+              onClick={handleMemoContentClick}
+              onDoubleClick={handleMemoContentDoubleClick}
+              compact={props.compact && workspaceMemoRelatedSetting.enableAutoCompact}
+              parentPage={parentPage}
+            />
+            {memo.location && <MemoLocationView location={memo.location} />}
+            <MemoResourceListView resources={memo.resources} />
+            <MemoRelationListView memo={memo} relations={referencedMemos} parentPage={parentPage} />
+            <MemoReactionistView memo={memo} reactions={memo.reactions} />
+          </div>
+          {nsfw && !showNSFWContent && (
+            <>
+              <div className="absolute inset-0 bg-transparent" />
+              <button
+                className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 py-2 px-4 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-zinc-800"
+                onClick={() => setShowNSFWContent(true)}
+              >
+                {t("memo.click-to-show-nsfw-content")}
+              </button>
+            </>
+          )}
         </>
       )}
     </div>

@@ -1,11 +1,8 @@
 import { Tooltip } from "@mui/joy";
-import clsx from "clsx";
 import dayjs from "dayjs";
-import { useWorkspaceSettingStore } from "@/store/v1";
-import { WorkspaceGeneralSetting } from "@/types/proto/api/v1/workspace_setting_service";
-import { WorkspaceSettingKey } from "@/types/proto/store/workspace_setting";
+import { workspaceStore } from "@/store/v2";
+import { cn } from "@/utils";
 import { useTranslate } from "@/utils/i18n";
-import { cn } from "@/utils/utils";
 
 interface Props {
   month: string; // Format: 2021-1
@@ -19,22 +16,21 @@ const getCellAdditionalStyles = (count: number, maxCount: number) => {
     return "";
   }
   const ratio = count / maxCount;
-  if (ratio > 0.7) {
-    return "bg-primary-darker text-gray-100 dark:opacity-80";
-  } else if (ratio > 0.4) {
-    return "bg-primary-dark text-gray-100 dark:opacity-80";
+  if (ratio > 0.75) {
+    return "bg-primary-darker/90 text-gray-100 dark:bg-primary-lighter/80";
+  } else if (ratio > 0.5) {
+    return "bg-primary-darker/70 text-gray-100 dark:bg-primary-lighter/60";
+  } else if (ratio > 0.25) {
+    return "bg-primary/70 text-gray-100 dark:bg-primary-lighter/40";
   } else {
-    return "bg-primary text-gray-100 dark:opacity-70";
+    return "bg-primary/50 text-gray-100 dark:bg-primary-lighter/20";
   }
 };
 
 const ActivityCalendar = (props: Props) => {
   const t = useTranslate();
   const { month: monthStr, data, onClick } = props;
-  const workspaceSettingStore = useWorkspaceSettingStore();
-  const weekStartDayOffset = (
-    workspaceSettingStore.getWorkspaceSettingByKey(WorkspaceSettingKey.GENERAL).generalSetting || WorkspaceGeneralSetting.fromPartial({})
-  ).weekStartDayOffset;
+  const weekStartDayOffset = workspaceStore.state.generalSetting.weekStartDayOffset;
 
   const year = dayjs(monthStr).toDate().getFullYear();
   const month = dayjs(monthStr).toDate().getMonth();
@@ -64,14 +60,26 @@ const ActivityCalendar = (props: Props) => {
   }
 
   return (
-    <div className={clsx("w-full h-auto shrink-0 grid grid-cols-7 grid-flow-row gap-1")}>
+    <div className={cn("w-full h-auto shrink-0 grid grid-cols-7 grid-flow-row gap-1")}>
       {weekDays.map((day, index) => (
-        <div key={index} className={clsx("w-6 h-5 text-xs flex justify-center items-center cursor-default opacity-60")}>
+        <div key={index} className={cn("w-6 h-5 text-xs flex justify-center items-center cursor-default opacity-60")}>
           {day}
         </div>
       ))}
       {days.map((item, index) => {
         const date = dayjs(`${year}-${month + 1}-${item.day}`).format("YYYY-MM-DD");
+
+        if (!item.isCurrentMonth) {
+          return (
+            <div
+              key={`${date}-${index}`}
+              className={cn("w-6 h-6 text-xs lg:text-[13px] flex justify-center items-center cursor-default", "opacity-60 text-gray-400")}
+            >
+              {item.day}
+            </div>
+          );
+        }
+
         const count = item.isCurrentMonth ? data[date] || 0 : 0;
         const isToday = dayjs().format("YYYY-MM-DD") === date;
         const tooltipText =
@@ -88,13 +96,12 @@ const ActivityCalendar = (props: Props) => {
           <Tooltip className="shrink-0" key={`${date}-${index}`} title={tooltipText} placement="top" arrow>
             <div
               className={cn(
-                "w-6 h-6 text-xs rounded-xl flex justify-center items-center border cursor-default",
-                "text-gray-400",
-                item.isCurrentMonth ? getCellAdditionalStyles(count, maxCount) : "opacity-60",
+                "w-6 h-6 text-xs lg:text-[13px] flex justify-center items-center cursor-default",
+                "rounded-lg border-2 text-gray-400",
+                item.isCurrentMonth && getCellAdditionalStyles(count, maxCount),
                 item.isCurrentMonth && isToday && "border-zinc-400",
-                item.isCurrentMonth && isSelected && "font-bold border-zinc-400",
+                item.isCurrentMonth && isSelected && "font-medium border-zinc-400",
                 item.isCurrentMonth && !isToday && !isSelected && "border-transparent",
-                !item.isCurrentMonth && "border-transparent",
               )}
               onClick={() => count && onClick && onClick(date)}
             >

@@ -79,7 +79,15 @@
     "username": "Username",
     "version": "Version",
     "visibility": "Visibility",
-    "yourself": "Yourself"
+    "yourself": "Yourself",
+    "shortcuts": "Shortcuts",
+    "created-at": "Created At",
+    "properties": "Properties",
+    "shortcut-filter": "Shortcut filter",
+    "input": "Input",
+    "tree-mode": "Tree mode",
+    "last-updated-at": "Last updated at",
+    "referencing": "Referencing"
   },
   "days": {
     "fri": "Fri",
@@ -131,7 +139,9 @@
     "direction": "Direction",
     "direction-desc": "Descending",
     "direction-asc": "Ascending",
-    "no-memos": "No memos."
+    "no-memos": "No memos.",
+    "click-to-show-nsfw-content": "Click to show NSFW contnet",
+    "click-to-hide-nsfw-content": "Click to hide NSFW content"
   },
   "message": {
     "archived-successfully": "Archived successfully",
@@ -222,7 +232,9 @@
       "archive-warning": "Are you sure to archive {{username}}?",
       "create-a-member": "Create a member",
       "delete-member": "Delete Member",
-      "delete-warning": "Are you sure to delete {{username}}? THIS ACTION IS IRREVERSIBLE"
+      "delete-warning": "Are you sure to delete {{username}}? THIS ACTION IS IRREVERSIBLE",
+      "user": "User",
+      "admin": "Admin"
     },
     "my-account": "My Account",
     "preference": "Preferences",
@@ -254,7 +266,7 @@
       "update-sso": "Update SSO",
       "user-endpoint": "User endpoint",
       "no-sso-found": "No SSO found.",
-      "configuring-keycloak-for-authentication": "Configuring Keycloak for Authentication"
+      "single-sign-on": "Configuring Single Sign-On (SSO) for Authentication"
     },
     "storage": "Storage",
     "storage-section": {
@@ -288,10 +300,12 @@
       "url-prefix-placeholder": "Custom URL prefix, optional",
       "url-suffix": "URL suffix",
       "url-suffix-placeholder": "Custom URL suffix, optional",
-      "warning-text": "Are you sure to delete storage service \"{{name}}\"? THIS ACTION IS IRREVERSIBLE"
+      "warning-text": "Are you sure to delete storage service \"{{name}}\"? THIS ACTION IS IRREVERSIBLE",
+      "filepath-template": "Filepath template"
     },
     "system": "System",
     "system-section": {
+      "title": "General",
       "additional-script": "Additional script",
       "additional-script-placeholder": "Additional JavaScript code",
       "additional-style": "Additional style",
@@ -354,8 +368,8 @@
     "workspace-section": {
       "disallow-user-registration": "Disallow user registration",
       "disallow-password-auth": "Disallow password auth",
-      "disallow-change-username": "Disallow Change Username",
-      "disallow-change-nickname": "Disallow Change Nickname",
+      "disallow-change-username": "Disallow changing username",
+      "disallow-change-nickname": "Disallow changing nickname",
       "week-start-day": "Week start day",
       "saturday": "Saturday",
       "sunday": "Sunday",
@@ -367,10 +381,12 @@
       "enable-memo-comments": "Enable memo comments",
       "enable-memo-location": "Enable memo location",
       "content-lenght-limit": "Content length limit (Byte)",
-      "reactions": "Reactions"
+      "reactions": "Reactions",
+      "enable-blur-nsfw-content": "Enable NSFW content blurring (add NSFW tags below)"
     },
     "version": "Version"
   },
+  "shortcut": {},
   "tag": {
     "all-tags": "All Tags",
     "create-tag": "Create Tag",
